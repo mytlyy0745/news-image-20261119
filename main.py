@@ -1,34 +1,49 @@
 #!/usr/bin/env python3
-"""Entry for make.fun news-image-20261119 (Python 3, standard library only).
+"""make.fun news-image-20261119 entry.
 
-Writes the front-page image that sums up the world's news of Thursday
-19 November 2026 to /output/entry.png. The image is shipped in this
-repository (entry.png, drawn by the build script) and copied there, so
-both runs write identical bytes.
+Renders the deliverable by copying the front-page PNG that ships in this
+repository (entry.png, drawn by build_image.py from the verified news of
+Thursday 19 November 2026) to the harness output path, then proving the
+copy is exact. Standard library only; no network, no randomness.
 """
 import hashlib
 import os
-import shutil
+import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-OUT = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
+SOURCE_NAME = "entry.png"
+DEST_NAME = "entry.png"
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
-def _sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def output_dir() -> Path:
+    return Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
 
 
-def main():
-    OUT.mkdir(parents=True, exist_ok=True)
-    src = HERE / "entry.png"
-    dst = OUT / "entry.png"
-    shutil.copyfile(src, dst)
-    # The grader runs this twice and requires identical bytes both times;
-    # refuse to report success if the copy does not match the source.
-    if _sha256(src) != _sha256(dst):
-        raise SystemExit("entry.png copy mismatch: refusing to report success")
+def digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main() -> int:
+    here = Path(__file__).resolve().parent
+    source = here / SOURCE_NAME
+    raw = source.read_bytes()
+    if not raw.startswith(PNG_MAGIC):
+        print(f"{source}: not a PNG file", file=sys.stderr)
+        return 1
+    if len(raw) > 1_048_576:
+        print(f"{source}: over the 1 MiB cap", file=sys.stderr)
+        return 1
+    out = output_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    dest = out / DEST_NAME
+    dest.write_bytes(raw)
+    if digest(source) != digest(dest):
+        print("copy mismatch: refusing to report success", file=sys.stderr)
+        return 1
+    print(f"wrote {dest} ({len(raw)} bytes, sha256 {digest(dest)[:16]}...)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
